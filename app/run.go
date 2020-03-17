@@ -3,14 +3,11 @@ package dnsUpdate
 import (
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"gopkg.in/ns1/ns1-go.v2/rest"
 	api "gopkg.in/ns1/ns1-go.v2/rest"
 )
-
-var wg sync.WaitGroup
 
 var ticker time.Ticker
 
