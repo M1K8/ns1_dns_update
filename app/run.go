@@ -5,23 +5,27 @@ import (
 	"net/http"
 	"time"
 
+	event "golang.org/x/sys/windows/svc/eventlog"
 	"gopkg.in/ns1/ns1-go.v2/rest"
 	api "gopkg.in/ns1/ns1-go.v2/rest"
 )
 
 var ticker time.Ticker
 
-//for testing / debugging
-func main() {
-	gracefulExit := make(chan bool)
-	hasFinished := make(chan bool)
-	catastrophicFailure := make(chan bool, 1)
-
-	Run(gracefulExit, hasFinished, catastrophicFailure)
-}
+// for testing / debugging
+//func main() {
+//	gracefulExit := make(chan bool)
+//	hasFinished := make(chan bool)
+//	catastrophicFailure := make(chan bool, 1)
+//	event.InstallAsEventCreate("dnsUpdate", 20)
+//
+//	log, _ := event.Open("dnsUpdate")
+//
+//	Run(gracefulExit, hasFinished, catastrophicFailure, log, "", "")
+//}
 
 // Run is the main method of the service that occsionally checks if the local IP has changed, and updates the DNS record if necessary.
-func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure chan<- bool) error {
+func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure chan<- bool, log *event.Log, domain string, apiKey string) error {
 
 	err := make(chan error, 5)
 
@@ -29,15 +33,16 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 
 	deleteOldIP := true
 
-	args := "DOMAIN"
 	httpClient := &http.Client{Timeout: time.Second * 10}
-	client := api.NewClient(httpClient, api.SetAPIKey("FILLME"))
-	zone, httpres, clientErr := client.Zones.Get(args) //zone
+	client := api.NewClient(httpClient, api.SetAPIKey(apiKey))
+	zone, httpres, clientErr := client.Zones.Get(domain) //zone
 
 	if clientErr != nil {
 		err <- clientErr
+		log.Error(1, clientErr.Error())
 	} else if httpres.StatusCode != 200 {
 		err <- errors.New("response not OK")
+		log.Error(2, "Cannot get current IP")
 	}
 	everythingIsBroken := false
 
@@ -81,11 +86,11 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 			case <-ticker.C:
 				// as this is simply making REST requests, doesnt matter if the service dies halfway through, so no
 				// need to worry about a graceful exit
-				oldIP, newIP := GetOldNewIPs(zone, client, args, err)
+				oldIP, newIP := GetOldNewIPs(zone, client, domain, err)
 
 				select {
 				case tempE := <-err:
-					print(tempE)
+					log.Error(3, tempE.Error())
 					hasFinished <- true
 					return nil
 				default:
@@ -100,26 +105,27 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 						}
 						//
 
-						ChangeIP(ipUpdated, newIP, err, client, zone.String(), failType, args, deleteOldIP)
+						ChangeIP(ipUpdated, newIP, err, client, zone.String(), failType, domain, deleteOldIP)
 						hasFinished <- true
 
 						select {
 						case failT := <-failType:
-							//log <-err
+							e := <-err
 							//if this is true, then it means the fetch of the old ip failed, meaning we can try to force overwrite it with the new IP
 							//if the gathering of the new IP failed, there is likely a larger issue at hand such as network connectivity, so exit
 							if failT {
-								// just go around again
+								log.Error(4, e.Error())
 								continue
 							}
 							//else
 							//updating failed, something is wrong, fail gracefully
+							log.Error(5, e.Error())
 							everythingIsBroken = true
 							continue
 
 						default:
 							ticker.Stop()
-							ticker = time.NewTicker(2 * time.Hour) //Unlikely to have multiple changes within 2 hrs
+							ticker = time.NewTicker(2 * time.Hour) //Unlikely to have multiple changes within 2 hr
 							deleteOldIP = true
 							continue
 						}

@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/AllenDang/w32 v0.0.0-20180428130237-ad0a36d80adc // indirect
+	github.com/Microsoft/go-winio v0.4.14
 	github.com/akavel/rsrc v0.8.0 // indirect
 	github.com/garyburd/go-oauth v0.0.0-20180319155456-bca2e7f09a17 // indirect
 	github.com/getlantern/systray v0.0.0-20200224203903-0de639be684d // indirect
@@ -15,9 +16,8 @@ require (
 	github.com/skelterjohn/go.uik v0.0.0-20130726145650-a9f0b77608a3 // indirect
 	github.com/sqweek/dialog v0.0.0-20200304031853-0dcd55bfe06a
 	golang.org/x/net v0.0.0-20200301022130-244492dfa37a // indirect
-	golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527
+	golang.org/x/sys v0.0.0-20200501145240-bc7a7d42d5c3
 	google.golang.org/appengine v1.6.5 // indirect
-	github.com/Microsoft/go-winio v0.4.14
 )
 
 replace github.com/m1k8/DNSUpdate/app => ./app/

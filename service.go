@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
+	event "golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
 
 	dnsUpdate "github.com/m1k8/DNSUpdate/app"
@@ -38,12 +39,13 @@ func main() {
 		return
 	}
 
-	if len(os.Args) < 2 {
+	if (len(os.Args) < 2 && os.Args[1] != "start") || (len(os.Args) < 4 && os.Args[1] == "start") {
 		fmt.Fprintf(os.Stderr,
 			"%s\n\n"+
 				"usage: %s <command>\n"+
 				"       where <command> is one of\n"+
-				"       install, remove, debug, start, stop, pause or continue.\n",
+				"       install, remove, debug, start, stop, pause or continue.\n"+
+				"		for start, make sure to also supply the domain and api key",
 			"invalid command", os.Args[0])
 		os.Exit(2)
 	}
@@ -59,7 +61,7 @@ func main() {
 	case "remove":
 		err = removeService(svcName)
 	case "start":
-		err = startService(svcName)
+		err = startService(svcName, os.Args[2], os.Args[3])
 	case "stop":
 		err = controlService(svcName, svc.Stop, svc.Stopped)
 	case "pause":
@@ -81,7 +83,7 @@ func main() {
 	return
 }
 
-func startService(name string) error {
+func startService(name string, domain string, api string) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		return err
@@ -92,7 +94,7 @@ func startService(name string) error {
 		return fmt.Errorf("could not access service: %v", err)
 	}
 	defer s.Close()
-	err = s.Start("is", "manual-started")
+	err = s.Start("is", "manual-started", domain, api)
 	if err != nil {
 		return fmt.Errorf("could not start service: %v", err)
 	}
@@ -137,7 +139,18 @@ func (m *myservice) Execute(args []string, r <-chan svc.ChangeRequest, changes c
 	hasFinished := make(chan bool, 1)
 	catastrophicFailure := make(chan bool, 1)
 
-	go dnsUpdate.Run(gracefulExit, hasFinished, catastrophicFailure)
+	event.InstallAsEventCreate("dnsUpdate", 20)
+
+	log, _ := event.Open("dnsUpdate")
+
+	domain := ""
+	api := ""
+
+	if len(args) > 2 {
+		domain = args[3]
+		api = args[4]
+	}
+	go dnsUpdate.Run(gracefulExit, hasFinished, catastrophicFailure, log, domain, api)
 
 loop:
 	for {

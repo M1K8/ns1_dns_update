@@ -13,7 +13,7 @@ A Window service written in Go to detect and update the A record for a domain po
 ### From an elevated PowerShell terminal:
 
 * **DNSUpdate.exe *install*** - installs the service
-* **DNSUpdate.exe *start*** - starts the service
+* **DNSUpdate.exe *start <domain> <api key>*** - starts the service
 
 * **DNSUpdate.exe *stop*** - stops the servive
 * **DNSUpdate.exe *remove*** - uninstalls the service
