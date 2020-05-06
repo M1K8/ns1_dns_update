@@ -3,6 +3,9 @@ package dnsUpdate
 import (
 	api "gopkg.in/ns1/ns1-go.v2/rest"
 	"gopkg.in/ns1/ns1-go.v2/rest/model/dns"
+
+	"errors"
+	"time"
 )
 
 var hasError bool
@@ -27,11 +30,20 @@ func deleteOld(client *api.Client, zone string, errChan chan<- error, failType c
 	}
 
 	//busy wait until the delete has propogated
+	ticker := time.NewTimer(1 * time.Minute)
 	for {
-		a, _, _ := client.Records.Get(zone, args, "A")
-		srv, _, _ := client.Records.Get(zone, args, "SRV")
-		if a == nil && srv == nil {
-			break
+		select {
+		case <-ticker.C:
+			errChan <- errors.New("Couldnt grab old stuff, ending")
+			hasError = true
+			return
+
+		default:
+			a, _, _ := client.Records.Get(zone, args, "A")
+			srv, _, _ := client.Records.Get(zone, args, "SRV")
+			if a == nil && srv == nil {
+				break
+			}
 		}
 	}
 }
