@@ -139,21 +139,31 @@ func (m *myservice) Execute(args []string, r <-chan svc.ChangeRequest, changes c
 	hasFinished := make(chan bool, 1)
 	catastrophicFailure := make(chan bool, 1)
 
+	firstRun := true
+
 	event.InstallAsEventCreate("dnsUpdate", 20)
 
 	log, _ := event.Open("dnsUpdate")
 
-	domain := ""
-	api := ""
+	domain := args[3]
+	api := args[4]
 
-	if len(args) > 2 {
-		domain = args[3]
-		api = args[4]
-	}
-	go dnsUpdate.Run(gracefulExit, hasFinished, catastrophicFailure, log, domain, api)
+	reconnectTicker := time.NewTicker(1 * time.Second)
 
 loop:
 	for {
+		//check we can access the api on first start...
+		//..and if we cant, wait until we can before proceeding, but stay receptive to svc.Stop etc
+		if firstRun {
+			select {
+			case <-reconnectTicker.C:
+				if dnsUpdate.CheckConnection(elog) {
+					firstRun = false
+					go dnsUpdate.Run(gracefulExit, hasFinished, catastrophicFailure, log, domain, api)
+					reconnectTicker = time.NewTicker(1 * time.Minute)
+				}
+			}
+		}
 		select {
 		case c := <-r:
 			switch c.Cmd {
@@ -180,7 +190,14 @@ loop:
 			default:
 				elog.Error(1, fmt.Sprintf("unexpected control request #%d", c))
 			}
-		case <-catastrophicFailure:
+		case c := <-catastrophicFailure:
+			if c {
+				// this is a disconnect reported by the app before the service polled for it, ergo the app isnt running
+				// meaning it needs to be restarted once there is a connection
+				elog.Info(8, "Message received, polling...")
+				firstRun = true
+				continue loop
+			}
 			elog.Error(1, fmt.Sprint("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 			break loop
 		}

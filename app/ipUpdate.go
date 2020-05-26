@@ -8,17 +8,16 @@ import (
 	"time"
 )
 
-var hasError bool
-
 func deleteOld(client *api.Client, zone string, errChan chan<- error, failType chan<- bool, args string) {
-	hasError = false
+	hasError := false
 	_, errA := client.Records.Delete(zone, args, "A")
 	_, errSRV := client.Records.Delete(zone, args, "SRV")
 
 	if errA != nil {
 		errChan <- errA
 		hasError = true
-	} else if errSRV != nil {
+	}
+	if errSRV != nil {
 		errChan <- errSRV
 		hasError = true
 	}
@@ -30,7 +29,7 @@ func deleteOld(client *api.Client, zone string, errChan chan<- error, failType c
 	}
 
 	//busy wait until the delete has propogated
-	ticker := time.NewTimer(1 * time.Minute)
+	ticker := time.NewTimer(30 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
@@ -71,7 +70,8 @@ func ChangeIP(ipUpdated chan<- bool, newIP string, errChan chan<- error, client 
 	if errACreate != nil {
 		errChan <- errACreate
 		failType <- false
-	} else if errSRVCreate != nil {
+	}
+	if errSRVCreate != nil {
 		errChan <- errSRVCreate
 		failType <- false
 	} else {

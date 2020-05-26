@@ -1,16 +1,31 @@
 package dnsUpdate
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"golang.org/x/sys/windows/svc/debug"
 	event "golang.org/x/sys/windows/svc/eventlog"
 	"gopkg.in/ns1/ns1-go.v2/rest"
 	api "gopkg.in/ns1/ns1-go.v2/rest"
+	"gopkg.in/ns1/ns1-go.v2/rest/model/dns"
 )
 
 var ticker time.Ticker
+
+//CheckConnection checks the connection to the api host to ensure we have an active connection
+func CheckConnection(elog debug.Log) bool {
+	_, err := http.Get("http://api.nsone.net")
+	if err != nil {
+		if elog != nil {
+			elog.Info(1, "Not connected to the internet!")
+		}
+		return false
+	}
+	return true
+}
 
 // for testing / debugging
 //func main() {
@@ -25,7 +40,7 @@ var ticker time.Ticker
 //}
 
 // Run is the main method of the service that occsionally checks if the local IP has changed, and updates the DNS record if necessary.
-func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure chan<- bool, log *event.Log, domain string, apiKey string) error {
+func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure chan<- bool, log *event.Log, domain string, apiKey string) {
 
 	err := make(chan error, 5)
 
@@ -33,18 +48,24 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 
 	deleteOldIP := true
 
+	everythingIsBroken := false
+
 	httpClient := &http.Client{Timeout: time.Second * 10}
 	client := api.NewClient(httpClient, api.SetAPIKey(apiKey))
+
+	var zone *dns.Zone
 	zone, httpres, clientErr := client.Zones.Get(domain) //zone
 
 	if clientErr != nil {
-		err <- clientErr
-		log.Error(1, clientErr.Error())
-	} else if httpres.StatusCode != 200 {
-		err <- errors.New("response not OK")
-		log.Error(2, "Cannot get current IP")
+		if strings.Contains(clientErr.Error(), "tcp") {
+			log.Error(1, clientErr.Error())
+			catastrophicFailure <- true
+			return
+		} else if httpres.StatusCode != 200 {
+			log.Error(2, fmt.Sprintf("Error %d", httpres.StatusCode))
+			everythingIsBroken = true
+		}
 	}
-	everythingIsBroken := false
 
 	//have an initial ticker to set things off
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -59,8 +80,14 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 	for {
 		if everythingIsBroken {
 			hasFinished <- true
+			catastrophicFailure <- false
+			return
+		}
+
+		if !CheckConnection(log) {
+			log.Error(1, clientErr.Error())
 			catastrophicFailure <- true
-			return nil
+			return
 		}
 		select {
 		case <-gracefulExit:
@@ -68,20 +95,26 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 			<-ipUpdated
 			//alert the service we're ready to die
 			hasFinished <- true
-			return nil
+			return
 		case loopError := <-err:
-			// if the error is record missing, that means the getOld failed, which is fine in this case; it means we need to create one anyway
-			if loopError != rest.ErrRecordMissing {
+			if strings.Contains(loopError.Error(), "tcp") {
+				//internets ded
+				log.Warning(2, "Internet disconnected")
+				catastrophicFailure <- true
+				return
+			} else if loopError != rest.ErrRecordMissing {
+				log.Error(3, loopError.Error())
 				<-ipUpdated
+				catastrophicFailure <- false
 				hasFinished <- true
-				return nil
+				return
+			} else {
+				//if the error is record missing, that means the getOld failed, which is fine in this case; it means we need to create one anyway
+				//signal we dont want to delete the record; if we delete something that doesnt exist itll cry
+				deleteOldIP = false
 			}
 
-			//signal we dont want to delete the record; if we delete something that doesnt exist itll cry
-			deleteOldIP = false
-
 		default:
-
 			select {
 			case <-ticker.C:
 				// as this is simply making REST requests, doesnt matter if the service dies halfway through, so no
@@ -92,12 +125,12 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 				case tempE := <-err:
 					log.Error(3, tempE.Error())
 					hasFinished <- true
-					return nil
+					return
 				default:
 
 					if oldIP != newIP {
 						//we're doing work, so we aren't finished, clear the channel if needed to show this
-						// this clears the channel if its populated, or continues if it isnt without any waiting :)
+						// this clears the channel if its populated, or continues if it isnt without any waiting
 						select {
 						case <-hasFinished:
 						case <-ipUpdated:
@@ -111,7 +144,7 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 						select {
 						case failT := <-failType:
 							e := <-err
-							//if this is true, then it means the fetch of the old ip failed, meaning we can try to force overwrite it with the new IP
+							//if this is true, then it means the fetch of the old ip on the dns side failed, meaning we can try to force overwrite it with the new IP
 							//if the gathering of the new IP failed, there is likely a larger issue at hand such as network connectivity, so exit
 							if failT {
 								log.Error(4, e.Error())

@@ -69,7 +69,7 @@ func GetOldNewIPs(zone *dns.Zone, client *api.Client, args string, errChan chan 
 		case err := <-errChan:
 			//rethrow the error
 			errChan <- err
-			//we have a new ip error, so keep looping until things hopefully get back to normal
+			//we have an old ip error, so keep looping until things hopefully get back to normal
 			return "", ""
 
 		default:
@@ -98,39 +98,3 @@ func GetOldNewIPs(zone *dns.Zone, client *api.Client, args string, errChan chan 
 		}
 	}
 }
-
-/*
-func PipeTest() {
-	pipeConfig := &winio.PipeConfig{SecurityDescriptor: "",
-		MessageMode:      true,
-		InputBufferSize:  100,
-		OutputBufferSize: 100}
-	//used hax, try CreateNamedPipe
-
-	pipeListener, err := winio.ListenPipe("\\\\.\\pipe\\dnsUpdate\\guiPipe", pipeConfig)
-
-	if err != nil {
-		fmt.Print(1)
-		fmt.Print(err)
-		return
-	}
-
-	fmt.Print(1)
-	pipe, err2 := pipeListener.Accept()
-
-	if err2 != nil {
-		fmt.Print(2)
-		fmt.Print(err2)
-		return
-	}
-
-	var input []byte
-	fmt.Print(2)
-
-	input[0] = 1
-	input[1] = 2
-
-	pipe.Write(input)
-
-	fmt.Print(3)
-}*/
