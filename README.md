@@ -1,6 +1,6 @@
 # **ns1_dns_update**
 
-A Window service written in Go to detect and update the A record for a domain pointing to a locally hosted server
+A Windows service written in Go to detect and update the A record for a domain pointing to a locally hosted server
 
 ## **Building**
 *Requires Go >v1.13*
