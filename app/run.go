@@ -85,7 +85,7 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 		}
 
 		if !CheckConnection(log) {
-			log.Error(1, clientErr.Error())
+			log.Error(1, "Internets dead")
 			catastrophicFailure <- true
 			return
 		}
@@ -123,6 +123,13 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 
 				select {
 				case tempE := <-err:
+					if strings.Contains(tempE.Error(), "tcp") {
+						//internets ded
+						log.Warning(2, "Internet disconnected")
+						hasFinished <- true
+						catastrophicFailure <- true
+						return
+					}
 					log.Error(3, tempE.Error())
 					hasFinished <- true
 					return
@@ -149,6 +156,14 @@ func Run(gracefulExit <-chan bool, hasFinished chan bool, catastrophicFailure ch
 							if failT {
 								log.Error(4, e.Error())
 								continue
+							}
+
+							if strings.Contains(e.Error(), "tcp") {
+								//internets ded
+								log.Warning(2, "Internet disconnected")
+								hasFinished <- true
+								catastrophicFailure <- true
+								return
 							}
 							//else
 							//updating failed, something is wrong, fail gracefully
