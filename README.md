@@ -19,4 +19,4 @@ A Windows service written in Go to detect and update the 'A' record for a domain
 * **DNSUpdate.exe *remove*** - uninstalls the service
 
 
-Made by (*heavily*) using the <ins>**gopkg.in/ns1/ns1-go.v2**</ins> and <ins>**golang.org/x/sys/windows/svc**</ins> packages.
+Made by (*heavily*) using the <ins>**https://gopkg.in/ns1/ns1-go.v2**</ins> and <ins>**https://github.com/judwhite/go-svc/**</ins> packages.
